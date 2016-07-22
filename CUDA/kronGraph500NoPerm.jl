@@ -1,30 +1,7 @@
 module PageRank
 
-using CUDAdrv, CUDAnative
-
-
-#
-# Utility functions
-#
-
-@target ptx function xorshift64(key::UInt64)
-    key = (~key) + (key << 21)
-    key = key $ (key >> 24)
-    key = (key + (key << 3)) + (key << 8)
-    key = key $ (key >> 14)
-    key = (key + (key << 2)) + (key << 4)
-    key = key $ (key >> 28)
-    key = key + (key << 31)
-    return key
-end
-
-"Return a 64-bit floating point number between 0 and 1"
-@target ptx function gpurand(seed)
-    input = reinterpret(UInt64, Float64(seed))
-    val = xorshift64(input)::UInt64
-    output = reinterpret(Float64, val / typemax(UInt64))
-    return output
-end
+using CUDAdrv, CUDAnative, CUDAnativelib
+using .CURANDkernel
 
 
 #
@@ -46,7 +23,8 @@ function kronGraph500NoPerm(scl, EdgesPerVertex)
 
     m_x = min(65535, m)
     m_y = ceil(Int, m/m_x)
-    @cuda ((m_x, m_y), scl, scl*4*sizeof(Int)) kronGraph500NoPerm_kernel(m, ab, a_norm, c_norm, ij1_d, ij2_d)
+    seed = rand(UInt64)
+    @cuda ((m_x, m_y), scl, scl*4*sizeof(Int)) kronGraph500NoPerm_kernel(m, ab, a_norm, c_norm, ij1_d, ij2_d, seed)
 
     ij1 = Array(ij1_d)
     free(ij1_d)
@@ -56,21 +34,24 @@ function kronGraph500NoPerm(scl, EdgesPerVertex)
     return ij1, ij2
 end
 
-@target ptx function kronGraph500NoPerm_kernel{T}(m, ab, a_norm, c_norm, ij1::CuDeviceArray{T}, ij2::CuDeviceArray{T})
+@target ptx function kronGraph500NoPerm_kernel{T}(m, ab, a_norm, c_norm, ij1::CuDeviceArray{T}, ij2::CuDeviceArray{T}, seed)
     i = (blockIdx().y-1) * gridDim().x + blockIdx().x
-
     ib = threadIdx().x
+    sequence = (ib-1) * gridDim().x * gridDim().y + i
     scl = blockDim().x
 
     if i <= m
+        # setup curand state
+        state = new(curandState_t)
+        curand_init(seed, sequence, 0, state)
         # get references to shmem
         temp = @cuSharedMem(T)
         ij1_buf = temp
         ij2_buf = temp+2*scl*sizeof(T)
 
         seed64 = Int64(ib) << 32 + i
-        a = gpurand(seed64)
-        b = gpurand(a)
+        a = curand_uniform(Float64, state)
+        b = curand_uniform(Float64, state)
 
         # calculate per-thread values
         k = 1 << (ib - 1)
@@ -105,6 +86,7 @@ end
             ij1[i] = one(T) + ij1_buf[ib]
             ij2[i] = one(T) + ij2_buf[ib]
         end
+        delete(state)
     end
 
     return nothing
@@ -130,7 +112,8 @@ function kronGraph500NoPerm_shuffle(scl, EdgesPerVertex)
 
     m_x = min(65535, m)
     m_y = ceil(Int, m/m_x)
-    @cuda ((m_x, m_y), nearest_warpsize(scl)) kronGraph500NoPerm_shuffle_kernel(m, scl, ab, a_norm, c_norm, ij1_d, ij2_d)
+    seed = rand(UInt64)
+    @cuda ((m_x, m_y), nearest_warpsize(scl)) kronGraph500NoPerm_shuffle_kernel(m, scl, ab, a_norm, c_norm, ij1_d, ij2_d, seed)
 
     ij1 = Array(ij1_d)
     free(ij1_d)
@@ -173,15 +156,16 @@ end
     return val
 end
 
-@target ptx function kronGraph500NoPerm_shuffle_kernel{T}(m, scl, ab, a_norm, c_norm, ij1::CuDeviceArray{T}, ij2::CuDeviceArray{T})
+@target ptx function kronGraph500NoPerm_shuffle_kernel{T}(m, scl, ab, a_norm, c_norm, ij1::CuDeviceArray{T}, ij2::CuDeviceArray{T}, seed)
     i = (blockIdx().y-1) * gridDim().x + blockIdx().x
-
     ib = threadIdx().x
+    sequence = (ib-1) * gridDim().x * gridDim().y + i
 
     if i <= m && ib <= scl
-        seed64 = Int64(ib) << 32 + i
-        a = gpurand(seed64)
-        b = gpurand(a)
+        state = new(curandState_t)
+        curand_init(seed, sequence, 0, state)
+        a = curand_uniform(Float64, state)
+        b = curand_uniform(Float64, state)
 
         # calculate per-thread values
         k = 1 << (ib - 1)
@@ -199,6 +183,7 @@ end
             ij1[i] = one(T) + ij1_val
             ij2[i] = one(T) + ij2_val
         end
+        delete(state)
     end
 
     return nothing
