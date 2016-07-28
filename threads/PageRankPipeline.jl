@@ -1,8 +1,9 @@
 #
 include("KronGraph500NoPerm_jthread.jl")
+include("io.jl")
 #include("KronGraph500NoPerm.jl")
-include("StrFileWrite.jl")
-include("StrFileRead.jl")
+#include("StrFileWrite.jl")
+#include("StrFileRead.jl")
 
 function PageRankPipeline(SCALE,EdgesPerVertex,Nfile);
 
@@ -45,10 +46,12 @@ function PageRankPipeline(SCALE,EdgesPerVertex,Nfile);
   tic();
 
     # Read in all the files into one array.
-@time    for i in myFiles
+@time   for i in myFiles
       fname = "data/K0/" * string(i) * ".tsv";
       println("  Reading: " * fname);  # Read filename.
+
       ut,vt = StrFileRead(fname);
+    
       # Concatenate to u,v
       if i == 1
          u = ut; v = vt;
