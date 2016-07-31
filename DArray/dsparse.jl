@@ -69,3 +69,13 @@ function create_adj_matrix(fvectors, N)
    end
    return DArray(reshape(lparts, (length(lparts), 1)))
 end
+
+import Base.SparseArrays: dropzeros!, AbstractSparseArray
+
+function dropzeros!{T, N, A <: AbstractSparseArray}(da :: DArray{T, N, A}, trim = true)
+   @sync begin
+      for pid in da.pids
+         @async remotecall_wait(x -> dropzeros!(localpart(x), trim), pid, da)
+      end
+   end
+end

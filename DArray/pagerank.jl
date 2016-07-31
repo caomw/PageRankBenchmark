@@ -51,9 +51,8 @@ function kernel2(filenames, N)
    @assert size(adj_matrix) == (N, N)
    info("Pruning and scaling")
    @time begin
-      din = sum(adj_matrix, 1)                  # Compute in degree
-      adj_matrix[find(din == maximum(din))]=0   # Eliminate the super-node.
-      adj_matrix[find(din == 1)]=0              # Eliminate the leaf-node.
+      # Eliminate super-node and leaf-nodes.
+      prune!(adj_matrix)
       # dout = sum(adj_matrix, 2)                 # Compute out degree
       # is = find(dout)                           # Find vertices with outgoing edges (dout > 0).
       # DoutInvD = zeros(size(adj_matrix, 1))     # Create diagonal weight matrix.
@@ -85,6 +84,30 @@ function run(path, scl, EdgesPerVertex)
 
    info("Executing kernel 2")
    @time adj_matrix = kernel2(filenames, N)
+end
+
+function prune!(adjm)
+   # sum(adjm, 1) does not ensure node locality, so we have to do it ourselves
+
+   pids = adjm.pids
+   din = Vector{Future}(length(pids))
+   maxima = Vector{Int64}(length(pids))
+   @sync for i in eachindex(pids, din, maxima)
+      @async begin
+         din[i] = remotecall(x -> sum(localpart(x), 1), pids[i], adjm)
+         maxima[i] = remotecall_fetch(x -> maximum(fetch(x)),pids[i], din[i])
+      end
+   end
+
+   @sync for i in eachindex(pids, din)
+      @async remotecall_wait(pids[i]) do
+         ladjm = localpart(adjm)
+         ldin  = fetch(din[i])
+         SparseArrays.fkeep!(ladjm, (i, j, x) -> begin
+            return !(ldin[i] == 1 || ldin[i] == max_din)
+         end)
+      end
+   end
 end
 
 function dread(filenames)
