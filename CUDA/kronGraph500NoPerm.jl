@@ -1,5 +1,3 @@
-module PageRank
-
 using CUDAdrv, CUDAnative
 
 
@@ -64,9 +62,9 @@ end
 
     if i <= m
         # get references to shmem
-        temp = @cuSharedMem(T)
-        ij1_buf = temp
-        ij2_buf = temp+2*scl*sizeof(T)
+        temp = @cuDynamicSharedMem(T, 4*scl)
+        ij1_buf = view(temp, 1:2*scl)
+        ij2_buf = view(temp, 2*scl+1:4*scl)
 
         seed64 = Int64(ib) << 32 + i
         a = gpurand(seed64)
@@ -150,7 +148,7 @@ end
 end
 
 @target ptx function reduce_block{T,F<:Function}(val::T, op::F)
-    shared = @cuSharedMem(T, 32)
+    shared = @cuStaticSharedMem(T, 32)
 
     wid, lane = fldmod1(threadIdx().x, warpsize)
 
@@ -202,6 +200,4 @@ end
     end
 
     return nothing
-end
-
 end
