@@ -1,7 +1,9 @@
 #
 include("KronGraph500NoPerm_jthread.jl")
-include("StrFileWrite.jl")
-include("StrFileRead.jl")
+include("io.jl")
+#include("KronGraph500NoPerm.jl")
+#include("StrFileWrite.jl")
+#include("StrFileRead.jl")
 
 function PageRankPipeline(SCALE,EdgesPerVertex,Nfile);
 
@@ -29,9 +31,9 @@ function PageRankPipeline(SCALE,EdgesPerVertex,Nfile);
       fname = "data/K0/" * string(i) * ".tsv";
       println("  Writing: " * fname);                          # Read filename.
       srand(i);                                                # Set random seed to be unique for this file.
-      ut, vt = KronGraph500NoPerm(SCALE,EdgesPerVertex./Nfile);  # Generate data.
+@time      ut, vt = KronGraph500NoPerm(SCALE,EdgesPerVertex./Nfile);  # Generate data.
 #        println("ut, vt ", ut[1], " ", vt[1])
-      writeuv(fname, ut, vt)
+@time      writeuv(fname, ut, vt)
     end
   K0time = toq();
   println("K0 Time: " * string(K0time) * ", Edges/sec: " * string(M./K0time));
@@ -44,10 +46,12 @@ function PageRankPipeline(SCALE,EdgesPerVertex,Nfile);
   tic();
 
     # Read in all the files into one array.
-    for i in myFiles
+@time   for i in myFiles
       fname = "data/K0/" * string(i) * ".tsv";
       println("  Reading: " * fname);  # Read filename.
+
       ut,vt = StrFileRead(fname);
+    
       # Concatenate to u,v
       if i == 1
          u = ut; v = vt;
@@ -57,10 +61,11 @@ function PageRankPipeline(SCALE,EdgesPerVertex,Nfile);
       end
     end
 
+@time begin
     sortIndex = sortperm(u)                      # Sort starting vertices.
     u = u[sortIndex]                                  # Get starting vertices.
     v = v[sortIndex]                                  # Get ending vertices.
-
+end
   K1time1 = toq();
   tic();
     # Write all the data to files.
