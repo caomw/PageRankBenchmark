@@ -30,7 +30,7 @@ function kronGraph500NoPerm(scl, nEdges)
         ij1 = one(Int64)
         ij2 = one(Int64)
         @inbounds for ib = 1:scl                   # Loop over each scale.
-            sc = 1 << (ib - 2)
+            sc = 1 << (ib - 1)
             ii_bit  = randbuf[ib] > ab
             jj_bit  = randbuf[ib+scl] > ifelse(ii_bit, c_norm, a_norm)
             ij1 += sc * ii_bit
@@ -82,7 +82,7 @@ function kronGraph500NoPermWithThreads(scl, EdgesPerVertex)
             ij1 = one(Int)
             ij2 = one(Int)
             @inbounds for ib = 1:scl                   # Loop over each scale.
-                sc = 1 << (ib - 2)
+                sc = 1 << (ib - 1)
                 ii_bit  = randbuf[ib] > ab
                 jj_bit  = randbuf[ib+scl] > ifelse(ii_bit, c_norm, a_norm)
                 # ii_bit  = rand() > ab
